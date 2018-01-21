@@ -70,7 +70,7 @@ def ada(html, type, fields, model, data, col):
             for card_id in col.db.list("select id from cards where did = %d" % did):
                 # We need a fast way to find answers by the html rendition of their questions.
                 # Creating the hash(question) => {cards} relation with the dictionary should do.
-                h = gethash(anki.utils.stripHTML(col.renderQA([card_id])[0]['q']))
+                h = gethash(anki.utils.stripHTMLMedia(col.renderQA([card_id])[0]['q']))
                 if h not in ada.QAcache[did]:
                     ada.QAcache[did][h] = []
                 ada.QAcache[did][h].append(card_id)
@@ -110,7 +110,7 @@ def ada(html, type, fields, model, data, col):
                 continue
                 
             suspect_card_qa = col.renderQA([suspect_card])[0]
-            if anki.utils.stripHTML(suspect_card_qa['q']) == ada.question and \
+            if anki.utils.stripHTMLMedia(suspect_card_qa['q']) == ada.question and \
                html != suspect_card_qa['a'] and \
                ada.question.strip() != '': # This line is no longer needed now that we take media file names into account
                 # We found a dupe
@@ -128,7 +128,7 @@ def UpdateNoteHashes(self, mod=None):
         if cid in ada.CardID2Hash:
             # Modified/deleted card has existed, wipe it from our cache
             ada.QAcache[did][ada.CardID2Hash[cid]] = [id for id in ada.QAcache[did][ada.CardID2Hash[cid]] if id != cid]
-        h = gethash(anki.utils.stripHTML(self.col.renderQA([cid])[0]['q']))
+        h = gethash(anki.utils.stripHTMLMedia(self.col.renderQA([cid])[0]['q']))
         if h not in ada.QAcache[did]:
             ada.QAcache[did][h] = []
         ada.QAcache[did][h].append(cid)
