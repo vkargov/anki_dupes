@@ -123,26 +123,41 @@ def ada(html, type, fields, model, data, col):
     return html
 
 # Dynamic updates of our cache when the user adds/modifies/deletes cards
-def UpdateNoteHashes(self, mod=None):
-    for cid, did in self.col.db.execute("select id, did from cards where nid = ? order by ord", self.id):
-        if cid in ada.CardID2Hash:
-            # Modified/deleted card has existed, wipe it from our cache
-            ada.QAcache[did][ada.CardID2Hash[cid]] = [id for id in ada.QAcache[did][ada.CardID2Hash[cid]] if id != cid]
-        h = gethash(anki.utils.stripHTMLMedia(self.col.renderQA([cid])[0]['q']))
-        if h not in ada.QAcache[did]:
-            ada.QAcache[did][h] = []
-        ada.QAcache[did][h].append(cid)
-        ada.CardID2Hash[cid] = h
+def UpdateHashes(col, cids):
+    for cid in cids:
+        for cid, did in col.db.execute("select id, did from cards where nid = ? order by ord", cid):
+            if cid in ada.CardID2Hash:
+                # Modified/deleted card has existed, wipe it from our cache
+                ada.QAcache[did][ada.CardID2Hash[cid]] = [id for id in ada.QAcache[did][ada.CardID2Hash[cid]] if id != cid]
+            h = gethash(anki.utils.stripHTMLMedia(col.renderQA([cid])[0]['q']))
+            if h not in ada.QAcache[did]:
+                ada.QAcache[did][h] = []
+            ada.QAcache[did][h].append(cid)
+            ada.CardID2Hash[cid] = h
+
+# Dynamic updates of our cache when the user adds/modifies/deletes cards
+def UpdateNoteHashes(self):
+    UpdateHashes(self.col, [self.id])
         
 # When the user adds a card, new cards are not readily available for modification during note.flush().
 # TODO: perhaps updating only cards will suffice?
-def UpdateCardHashes(self, mod=None):
-    UpdateNoteHashes(self.note(), mod=None)
+def UpdateCardHashes(self):
+    UpdateNoteHashes(self.note())
+
+def PreUpdateSelectedCardHashes(self):
+    UpdateSelectedCardHashes.cids = self.selectedCards()
+
+def UpdateSelectedCardHashes(self):
+    UpdateHashes(self.mw.col, UpdateSelectedCardHashes.cids)
+    UpdateHashes(self.mw.col, self.selectedCards())
+    del UpdateSelectedCardHashes.cids
 
 ada.QAcache = {}
 ada.CardID2Hash = {}
 ada.recursive = False
+
 anki.hooks.addHook('mungeQA', ada);
 anki.notes.Note.flush = anki.hooks.wrap(anki.notes.Note.flush, UpdateNoteHashes, "after")
 anki.cards.Card.flush = anki.hooks.wrap(anki.cards.Card.flush, UpdateCardHashes, "after")
-from aqt.qt import debug
+aqt.browser.Browser.setDeck = anki.hooks.wrap(aqt.browser.Browser.setDeck, PreUpdateSelectedCardHashes, "before") # Deck change, remember old deck
+aqt.browser.Browser.setDeck = anki.hooks.wrap(aqt.browser.Browser.setDeck, UpdateSelectedCardHashes, "after") # Deck change, process old & new decks
