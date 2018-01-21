@@ -42,7 +42,7 @@ def ada(html, type, fields, model, data, col):
 
     if type == 'q':
         # Questions remain unique, just remember them
-        ada.question = anki.utils.stripHTML( html)
+        ada.question = anki.utils.stripHTMLMedia( html)
         ada.q_fields = fields
         ada.q_model = model
         ada.q_data = data
@@ -112,7 +112,7 @@ def ada(html, type, fields, model, data, col):
             suspect_card_qa = col.renderQA([suspect_card])[0]
             if anki.utils.stripHTML(suspect_card_qa['q']) == ada.question and \
                html != suspect_card_qa['a'] and \
-               ada.question.strip() != '': # image-questions cannot be combined. This condition can be improved.
+               ada.question.strip() != '': # This line is no longer needed now that we take media file names into account
                 # We found a dupe
                 united_html += suspect_card_qa['a'][len(suspect_card_qa['q']):]
 
