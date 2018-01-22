@@ -1,0 +1,6 @@
+# Changelog
+0.5 (January 2018): More stability fixes.
+0.4 (December 2017): Disable an overly strict assertion triggering if a card is moved to another deck under certain circumstances.
+0.3 (Novermber 2017): Don't group together non-text cards.
+0.2 (April 29, 1999): Update cache when the user adds/modifies/deletes cards.
+0.1 (3000 BC): Initial version.
