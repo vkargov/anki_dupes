@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Show duplicates v0.4
+# Show duplicates v0.5
 # Show card duplicates for a card below it.
 
 # TODO
