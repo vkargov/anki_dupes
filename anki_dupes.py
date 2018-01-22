@@ -39,7 +39,7 @@ import anki, aqt, hashlib
 # nid = note ID
 # did = deck ID
 # ord = ordinal wtf?
-# mod = modified?
+# mod = model
 
 # DEBUGGING
 # Use the debug() call to put breakpoints wherever you need and then
