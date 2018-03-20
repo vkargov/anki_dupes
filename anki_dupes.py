@@ -144,8 +144,7 @@ def ada(html, type, fields, model, data, col):
 
             suspect_card_qa = col.renderQA([suspect_card])[0]
             if anki.utils.stripHTMLMedia(suspect_card_qa['q']) == ada.question and \
-               html != suspect_card_qa['a'] and \
-               ada.question.strip() != '': # This line is no longer needed now that we take media file names into account
+               html != suspect_card_qa['a']:
                 # We found a dupe
                 united_html += suspect_card_qa['a'][len(suspect_card_qa['q']):]
 
@@ -170,6 +169,7 @@ def UpdateHashes(col, cids, did, new_did=None):
         if cid in ada.CardID2Hash:
             # _log(u"    QAcache before: {}({})".format(ada.CardID2Hash[cid], str(ada.QAcache[did][ada.CardID2Hash[cid]])))
             # Modified/deleted card has existed, wipe it from our cache
+            # Bug: This will throw when *some*, but not *all* cards from a note are moved to another deck. UPD: can't reproduce...
             ada.QAcache[did][ada.CardID2Hash[cid]] = [id for id in ada.QAcache[did][ada.CardID2Hash[cid]] if id != cid]
             # _log(u"    QAcache after: {}".format(str(ada.QAcache[did][ada.CardID2Hash[cid]])))
 
