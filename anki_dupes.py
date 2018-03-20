@@ -59,6 +59,33 @@ def _get_card_q(col, cid):
 def _get_card_a(col, cid):
     return anki.utils.stripHTMLMedia(col.renderQA([cid])[0]['a'])
 
+def buildCacheForDeck(did, col, qacache):
+    # If we haven't built the table for the current deck, do it now.
+    # sibaraku omati kudasai
+    if did not in ada.QAcache:
+        ada.QAcache[did] = {}
+        for card_id in col.db.list("select id from cards where did = %d" % did):
+            # We need a fast way to find answers by the html rendition of their questions.
+            # Creating the hash(question) => {cards} relation with the dictionary should do.
+            h = _get_card_hash(col, card_id)
+            if h not in ada.QAcache[did]:
+                ada.QAcache[did][h] = []
+            ada.QAcache[did][h].append(card_id)
+
+            # assert(card_id not in ada.CardID2Hash)
+            # This assertion will trigger if e.g. a card has been moved to
+            # another deck. The stale hash entry should cause no harm except
+            # maybe a rare scenario when the card will still be shown for the
+            # old deck till restart.
+            # I could add a hook to _setDeck@browser.py to address it, but I
+            # don't have time to verify this will not break something else.
+            # TLDR deal with it, at least for now.
+
+            # We also keep the backwards CardID => hash(question) relation needed
+            # when we need to dynamically update the main dictionary
+            # when the user adds/edits/deletes cards
+            ada.CardID2Hash[card_id] = h
+
 # ada = add dupe answers
 def ada(html, type, fields, model, data, col):
     # data is [cid, nid, mid, did, ord, tags, flds]
@@ -96,31 +123,7 @@ def ada(html, type, fields, model, data, col):
         # Deck ID
         did = data[3]
 
-        # If we haven't built the table for the current deck, do it now.
-        # sibaraku omati kudasai
-        if did not in ada.QAcache:
-            ada.QAcache[did] = {}
-            for card_id in col.db.list("select id from cards where did = %d" % did):
-                # We need a fast way to find answers by the html rendition of their questions.
-                # Creating the hash(question) => {cards} relation with the dictionary should do.
-                h = _get_card_hash(col, card_id)
-                if h not in ada.QAcache[did]:
-                    ada.QAcache[did][h] = []
-                ada.QAcache[did][h].append(card_id)
-
-                # assert(card_id not in ada.CardID2Hash)
-                # This assertion will trigger if e.g. a card has been moved to
-                # another deck. The stale hash entry should cause no harm except
-                # maybe a rare scenario when the card will still be shown for the
-                # old deck till restart.
-                # I could add a hook to _setDeck@browser.py to address it, but I
-                # don't have time to verify this will not break something else.
-                # TLDR deal with it, at least for now.
-
-                # We also keep the backwards CardID => hash(question) relation needed
-                # when we need to dynamically update the main dictionary
-                # when the user adds/edits/deletes cards
-                ada.CardID2Hash[card_id] = h
+        buildCacheForDeck(did, col, ada.QAcache)
 
         h = _get_hash(ada.question)
 
@@ -155,22 +158,38 @@ def ada(html, type, fields, model, data, col):
     return html
 
 # Dynamic updates of our cache when the user adds/modifies/deletes cards
-# col = collection, cids = card Ids, did = deck ID
-def UpdateHashes(col, cids, did, new_did=None):
-
-    if not new_did:
-        new_did = did
+# col = collection
+# cid2did = cards & decks associated with them BEFORE possible deck change
+# new_cid2did = same, but AFTER the deck change
+def UpdateHashes(col, cid2did, new_cid2did = {}):
 
     # _log(u"UpdateHashes (cids = {}, did = {}[{}])".format(str(cids), did, col.decks.get(did)['name']))
-    for cid in cids:
+    for cid in cid2did:
+
         # _log(u"  Processing {} [{}]".format(cid, _get_card_q(col, cid).strip()))
+
+        did = cid2did[cid]
+        
+        if cid in new_cid2did:
+            new_did = new_cid2did[cid]
+        else:
+            new_did = did
 
         # Purge from the old location
         if cid in ada.CardID2Hash:
             # _log(u"    QAcache before: {}({})".format(ada.CardID2Hash[cid], str(ada.QAcache[did][ada.CardID2Hash[cid]])))
             # Modified/deleted card has existed, wipe it from our cache
-            # Bug: This will throw when *some*, but not *all* cards from a note are moved to another deck. UPD: can't reproduce...
+
+            # If we haven't visited the deck, nothing needs to be done.
+            # We'll build an up-to-date cache once the user starts revising it.
+            if did not in ada.QAcache:
+                continue
+
+            print("{} {}".format(cid in ada.CardID2Hash, ada.CardID2Hash[cid] in ada.QAcache[did]))
+            
+            # Exclude the card from the "old" deck.
             ada.QAcache[did][ada.CardID2Hash[cid]] = [id for id in ada.QAcache[did][ada.CardID2Hash[cid]] if id != cid]
+            
             # _log(u"    QAcache after: {}".format(str(ada.QAcache[did][ada.CardID2Hash[cid]])))
 
         h = _get_card_hash(col, cid)
@@ -184,26 +203,28 @@ def UpdateNoteHashes(self):
     cards = self.cards();
     if not cards:
         return
-    UpdateHashes(self.col, [card.id for card in self.cards()], cards[0].did)
+    UpdateHashes(self.col, {card.id: card.did for card in cards})
 
 # When the user adds a card, new cards are not readily available for modification during note.flush().
 # TODO: perhaps updating only cards will suffice?
 def UpdateCardHashes(self):
-    UpdateHashes(self.col, [self.id], self.did)
+    UpdateHashes(self.col, {self.id: self.did})
 
-def BrowserCid2Did(self, cid):
-    return self.mw.col.db.scalar("select did from cards where id = ?", cid)
+def BrowserCids2Dids(self, cids):
+    # Returns a list of (cid, did) tuples containing the IDs of each changed card and its respective deck.
+    query = "SELECT id, did FROM cards WHERE id = ?"
+    return dict(zip(cids, (self.mw.col.db.scalar(query, cid) for cid in cids)))
 
 def PreUpdateSelectedCardHashes(self):
     cids = self.selectedCards()
-    UpdateSelectedCardHashes.old_did = BrowserCid2Did(self, cids[0])
+    UpdateSelectedCardHashes.old_dids = BrowserCids2Dids(self, cids)
 
 def UpdateSelectedCardHashes(self):
     cids = self.selectedCards()
-    old_did = UpdateSelectedCardHashes.old_did
-    new_did = BrowserCid2Did(self, cids[0])
-    UpdateHashes(self.mw.col, cids, old_did, new_did)
-    del UpdateSelectedCardHashes.old_did
+    old_dids = UpdateSelectedCardHashes.old_dids
+    new_dids = BrowserCids2Dids(self, cids)
+    UpdateHashes(self.mw.col, old_dids, new_dids)
+    del UpdateSelectedCardHashes.old_dids
 
 ada.QAcache = {}
 ada.CardID2Hash = {}
