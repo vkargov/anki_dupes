@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
-# Show duplicates v0.5
-# Show card duplicates for a card below it.
+# Show duplicates v0.5 aka Ada(update dupe answers)
+# Shows card duplicates for a card below it.
 
 # TODO
 # Update timings on the duplicates.
@@ -47,191 +47,172 @@ import anki, aqt, hashlib
 
 ################################################################################
 
-def _get_hash(s):
-    return int(hashlib.md5(s.encode('utf8')).hexdigest(), 16)
+class Ada:
+    """This class is not instantiated, it's just to clamp up the global
+    state and methods of the add-on together. Probably a bad idea, but I'm
+    rolling with it for the time being."""
 
-def _get_card_hash(col, cid):
-    return _get_hash(_get_card_q(col, cid))
+    class Question:
+        """Currently processed question."""
+        pass
 
-def _get_card_q(col, cid):
-    return anki.utils.stripHTMLMedia(col.renderQA([cid])[0]['q'])
+    class CacheEntry:
+        """QA cache entry."""
+        def __init__(self, card_id, answer_html):
+            self.card_id = card_id
+            self.answer_html = answer_html
+    
+    QAcache = {}
+    recursive = False
+    old_dids = None
+    question = Question()       # Current question
 
-def _get_card_a(col, cid):
-    return anki.utils.stripHTMLMedia(col.renderQA([cid])[0]['a'])
+    @static_method
+    def get_card_qa(collection, card_id):
+        return map(anki.utils.stripHTMLMedia, collection.renderQA([card_id])[0])
 
-def buildCacheForDeck(did, col, qacache):
-    # If we haven't built the table for the current deck, do it now.
-    # sibaraku omati kudasai
-    if did not in ada.QAcache:
-        ada.QAcache[did] = {}
-        for card_id in col.db.list("select id from cards where did = %d" % did):
-            # We need a fast way to find answers by the html rendition of their questions.
-            # Creating the hash(question) => {cards} relation with the dictionary should do.
-            h = _get_card_hash(col, card_id)
-            if h not in ada.QAcache[did]:
-                ada.QAcache[did][h] = []
-            ada.QAcache[did][h].append(card_id)
+    @static_method
+    def build_cache_from_deck(collection, deck_id):
 
-            # assert(card_id not in ada.CardID2Hash)
-            # This assertion will trigger if e.g. a card has been moved to
-            # another deck. The stale hash entry should cause no harm except
-            # maybe a rare scenario when the card will still be shown for the
-            # old deck till restart.
-            # I could add a hook to _setDeck@browser.py to address it, but I
-            # don't have time to verify this will not break something else.
-            # TLDR deal with it, at least for now.
+        # If we haven't built the table for the current deck, do it now.
+        # sibaraku omati kudasai
 
-            # We also keep the backwards CardID => hash(question) relation needed
-            # when we need to dynamically update the main dictionary
-            # when the user adds/edits/deletes cards
-            ada.CardID2Hash[card_id] = h
+        QAcache[deck_id] = {}
+        
+        for card_id in collection.db.list("SELECT id FROM cards WHERE did = %d" % deck_id):
+            question = get_card_q(collection, card_id)
 
-# ada = add dupe answers
-def ada(html, type, fields, model, data, col):
-    # data is [cid, nid, mid, did, ord, tags, flds]
+            QAcache[deck_id][question] = set(card_id)
 
-    # TODO add an assertion that the hook is the last one
-    # (otherwise something truly horrifying might just happen, but I don't exactly know what)
+            # We also keep the backwards CardID => hash(question) relation
+            # needed when we need to dynamically update the main dictionary if
+            # the user adds/edits/deletes cards.
+            Ada.CardID2QA[card_id] = question
 
-    # renderQA will re-call this hook when rendering each sub-answer.
+    @static_method
+    def add_dupe_answers(html, card_type, fields, model, data, collection):
+        """Combine duplicate answers whenever the card is to be displayed
+        data is [cid, nid, mid, did, ord, tags, flds]"""
 
-    # _log("Ada(recursive={})".format(ada.recursive))
-
-    if ada.recursive:
-        return html
-
-    if type == 'q':
-        # Questions remain unique, just remember them
-        ada.question = anki.utils.stripHTMLMedia( html)
-        ada.q_fields = fields
-        ada.q_model = model
-        ada.q_data = data
-        ada.q_col = col
-    elif type == 'a':
-        # Answers, on the other hand, are not. We'll need to walk through all of them that
-        # match the question and merge them into one html to be displayed on the screen.
-
-        ada.recursive = True
-
-        # Check that we are rendering the answers to the card we rememered the question of.
-        # This should always be the case.
-        assert ( ada.q_fields == fields and
-                 ada.q_model == model and
-                 ada.q_data == data and
-                 ada.q_col == col)
-
-        # Deck ID
-        did = data[3]
-
-        buildCacheForDeck(did, col, ada.QAcache)
-
-        h = _get_hash(ada.question)
-
-        # TODO get rid of this.
-        # There are still unexplored cases where we "forget" to rebuild cache.
-        if h not in ada.QAcache[did]:
-            ada.recursive = False
+        # Recursion may happen because reasons. Stolidly ignore it.
+        # _log("add_dupe_answers: recursive={}".format(ada.recursive))
+        if Ada.recursive:
             return html
 
-        suspect_cards = ada.QAcache[did][h]
+        if card_type == 'q':
+            # Questions remain unique, just remember them
+            Ada.question.text = anki.utils.stripHTMLMedia(html)
+            Ada.question.fields = fields
+            Ada.question.model = model
+            Ada.question.data = data
+            Ada.question.collection = collection
+        elif card_type == 'a':
+            # Answers, on the other hand, are not. We'll need to walk through all of them that
+            # match the question and merge them into one html to be displayed on the screen.
 
-        united_html = html
+            Ada.recursive = True
 
-        # Internally render QA for each sub-answer and join them together
-        for suspect_card in suspect_cards:
-            if len (col.db.list("select id from cards where id = %d" % suspect_card)) == 0:
-                # If the card is absent for some reason (e.g. has been deleted), remove it from cache
-                ada.QAcache[did][h] = [id for id in ada.QAcache[did][h] if id != suspect_card]
-                ada.CardID2Hash.pop(suspect_card, None)
-                continue
+            # Check that we are rendering the answers to the card we rememered the question of.
+            # This should always be the case.
+            assert ( Ada.question.fields == fields and
+                     Ada.question.model == model and
+                     Ada.question.data == data and
+                     Ada.question.collection == collection)
 
-            suspect_card_qa = col.renderQA([suspect_card])[0]
-            if anki.utils.stripHTMLMedia(suspect_card_qa['q']) == ada.question and \
-               html != suspect_card_qa['a']:
-                # We found a dupe
-                united_html += suspect_card_qa['a'][len(suspect_card_qa['q']):]
+            deck_id = data[3]            
 
-        html = united_html
+            if deck_id not in QAcache:
+                build_cache_from_deck(collection, deck_id)
 
-    ada.recursive = False
+            duplicates = ada.QAcache[did][current_question.text]
 
-    return html
+            # Show the "true" answer at the top.
+            united_html = html
 
-# Dynamic updates of our cache when the user adds/modifies/deletes cards
-# col = collection
-# cid2did = cards & decks associated with them BEFORE possible deck change
-# new_cid2did = same, but AFTER the deck change
-def UpdateHashes(col, cid2did, new_cid2did = {}):
+            # Internally render QA for each sub-answer and join them together
+            for duplicate in duplicates:                
+                # Enforce that the card is not absent for whatever reason.
+                assert(len(col.db.list("select id from cards where id = %d" % suspect_card)) > 0)
 
-    # _log(u"UpdateHashes (cids = {}, did = {}[{}])".format(str(cids), did, col.decks.get(did)['name']))
-    for cid in cid2did:
+                duplicate_qa = collection.renderQA([suspect_card])[0]
+                
+                if html != duplicate_qa['a']:
+                    # Add the question part of the HTML
+                    united_html += duplicate_qa['a'][len(duplicate_qa['q']):]
 
-        # _log(u"  Processing {} [{}]".format(cid, _get_card_q(col, cid).strip()))
+            html = united_html
 
-        did = cid2did[cid]
-        
-        if cid in new_cid2did:
-            new_did = new_cid2did[cid]
-        else:
-            new_did = did
+        Ada.recursive = False
 
-        # Purge from the old location
-        if cid in ada.CardID2Hash:
-            # _log(u"    QAcache before: {}({})".format(ada.CardID2Hash[cid], str(ada.QAcache[did][ada.CardID2Hash[cid]])))
-            # Modified/deleted card has existed, wipe it from our cache
+        return html
 
-            # If we haven't visited the deck, nothing needs to be done.
-            # We'll build an up-to-date cache once the user starts revising it.
-            if did not in ada.QAcache:
-                continue
+    def UpdateHashes(collection, card_ids):
+        """Dynamically update our cache when the user adds/modifies/deletes cards."""
 
-            print("{} {}".format(cid in ada.CardID2Hash, ada.CardID2Hash[cid] in ada.QAcache[did]))
+        # _log(u"UpdateHashes (cids = {}, did = {}[{}])".format(str(cids), did, col.decks.get(did)['name']))
+
+        for card_id in card_ids:
+
+            # _log(u"  Processing {} [{}]".format(cid, _get_card_q(col, cid).strip()))
+
+            deck_id = collection.db.scalar("SELECT did FROM cards WHERE id = ?", card_id)
+
+            # Purge from the old location
+            if cid in ada.CardID2Hash:
+                # _log(u"    QAcache before: {}({})".format(ada.CardID2Hash[cid], str(ada.QAcache[did][ada.CardID2Hash[cid]])))
+                # Modified/deleted card has existed, wipe it from our cache
+
+                # If we haven't visited the deck, nothing needs to be done.
+                # We'll build an up-to-date cache once the user starts revising it.
+                if did not in ada.QAcache:
+                    continue
+
+                print("{} {}".format(cid in ada.CardID2Hash, ada.CardID2Hash[cid] in ada.QAcache[did]))
+
+                # Exclude the card from the "old" deck.
+                ada.QAcache[did][ada.CardID2Hash[cid]] = [id for id in ada.QAcache[did][ada.CardID2Hash[cid]] if id != cid]
+
+                # _log(u"    QAcache after: {}".format(str(ada.QAcache[did][ada.CardID2Hash[cid]])))
+
+            h = _get_card_q(col, cid)
+            if h not in ada.QAcache[new_did]:
+                ada.QAcache[new_did][h] = []
+            ada.QAcache[new_did][h].append(cid)
+            ada.CardID2Hash[cid] = h
+
+    @staticmethod
+    def UpdateNoteHashes(self):
+        """Dynamic updates of our cache when the user adds/modifies/deletes cards"""
+        cards = self.cards();
+        if not cards:
+            return
+        UpdateHashes(self.col, {card.id: card.did for card in cards})
+
+    # When the user adds a card, new cards are not readily available for modification during note.flush().
+    # TODO: perhaps updating only cards will suffice?
+    @staticmethod
+    def UpdateCardHashes(self):
+        UpdateHashes(self.col, {self.id: self.did})
+
+    def BrowserCids2Dids(self, cids):
+        """Return a list of (cid, did) tuples containing the IDs of each changed card and its respective deck."""
+        return dict(zip(cids, (self.mw.col.db.scalar(query, cid) for cid in cids)))
+
+    @staticmethod
+    def remove_cards_from_cache(self):
+        """Remove cards from cache. Needed when the user moves them to another deck or deletes them."""
+        card_ids = self.selectedCards()
+        for card_id, deck_id in collection.db.list("SELECT id, did FROM cards WHERE id in {}".format(card_ids)):
+            QAcache[deck_id][card_id].remove            
             
-            # Exclude the card from the "old" deck.
-            ada.QAcache[did][ada.CardID2Hash[cid]] = [id for id in ada.QAcache[did][ada.CardID2Hash[cid]] if id != cid]
-            
-            # _log(u"    QAcache after: {}".format(str(ada.QAcache[did][ada.CardID2Hash[cid]])))
+    @staticmethod
+    def update_after_deck_change(self):
+        """Update the plugin's hashes after the deck change."""
+        UpdateHashes(self.mw.col, self.selectedCards())
 
-        h = _get_card_hash(col, cid)
-        if h not in ada.QAcache[new_did]:
-            ada.QAcache[new_did][h] = []
-        ada.QAcache[new_did][h].append(cid)
-        ada.CardID2Hash[cid] = h
-
-# Dynamic updates of our cache when the user adds/modifies/deletes cards
-def UpdateNoteHashes(self):
-    cards = self.cards();
-    if not cards:
-        return
-    UpdateHashes(self.col, {card.id: card.did for card in cards})
-
-# When the user adds a card, new cards are not readily available for modification during note.flush().
-# TODO: perhaps updating only cards will suffice?
-def UpdateCardHashes(self):
-    UpdateHashes(self.col, {self.id: self.did})
-
-def BrowserCids2Dids(self, cids):
-    # Returns a list of (cid, did) tuples containing the IDs of each changed card and its respective deck.
-    query = "SELECT id, did FROM cards WHERE id = ?"
-    return dict(zip(cids, (self.mw.col.db.scalar(query, cid) for cid in cids)))
-
-def PreUpdateSelectedCardHashes(self):
-    cids = self.selectedCards()
-    UpdateSelectedCardHashes.old_dids = BrowserCids2Dids(self, cids)
-
-def UpdateSelectedCardHashes(self):
-    cids = self.selectedCards()
-    old_dids = UpdateSelectedCardHashes.old_dids
-    new_dids = BrowserCids2Dids(self, cids)
-    UpdateHashes(self.mw.col, old_dids, new_dids)
-    del UpdateSelectedCardHashes.old_dids
-
-ada.QAcache = {}
-ada.CardID2Hash = {}
-ada.recursive = False
-
-anki.hooks.addHook('mungeQA', ada);
-anki.notes.Note.flush = anki.hooks.wrap(anki.notes.Note.flush, UpdateNoteHashes, "after")
-anki.cards.Card.flush = anki.hooks.wrap(anki.cards.Card.flush, UpdateCardHashes, "after")
-aqt.browser.Browser.setDeck = anki.hooks.wrap(aqt.browser.Browser.setDeck, PreUpdateSelectedCardHashes, "before") # Deck change, remember old deck
-aqt.browser.Browser.setDeck = anki.hooks.wrap(aqt.browser.Browser.setDeck, UpdateSelectedCardHashes, "after") # Deck change, process old & new decks
+anki.hooks.addHook('mungeQA', Ada.add_dupe_answers);
+anki.notes.Note.flush = anki.hooks.wrap(anki.notes.Note.flush, Ada.UpdateNoteHashes, 'after')
+anki.cards.Card.flush = anki.hooks.wrap(anki.cards.Card.flush, Ada.UpdateCardHashes, 'after')
+aqt.browser.Browser.setDeck = anki.hooks.wrap(aqt.browser.Browser.setDeck, Ada.remove_cards_from_cache, 'before')
+aqt.browser.Browser.setDeck = anki.hooks.wrap(aqt.browser.Browser.setDeck, Ada.update_after_deck_change, 'after')
+# TODO Now I need to handle card deletion
