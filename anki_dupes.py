@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 
-# Show duplicates v0.6 aka Ada(update dupe answers)
+################################################################################
+# DESCRIPTION
+################################################################################
+# Show duplicates v0.6 aka Ada(update dupe answers).
 # Shows card duplicates for a card below it.
-
-import anki, aqt, hashlib
-from aqt.qt import debug
-
 ################################################################################
 # TERMINOLOGY
 ################################################################################
@@ -13,7 +12,7 @@ from aqt.qt import debug
 # or in other words, a "note" is a "unit of knowledge" and a "card" is all the
 # flashcards based on this unit of knowledge
 ################################################################################
-# TABLE cards:
+# TABLE cards
 ################################################################################
 # nid = note ID
 # did = deck ID
@@ -25,9 +24,10 @@ from aqt.qt import debug
 # Call debug() from wherever you need and then
 # just run anki from the console
 #
-# If navigation in pdb does not work, then chances are that readline is broken,
-# to fix it do "import readline" and resolve it somehow
-# e.g. by using LD_PRELOAD or installing the right package if available
+# If navigation in pdb does not work, then chances are that readline is not
+# linked properly. To fix it, try "import readline", take note of the error
+# message, and start workig from there somehow, e.g. by using LD_PRELOAD or
+# installing the right package if available.
 ################################################################################
 # TODO
 ################################################################################
@@ -39,6 +39,9 @@ from aqt.qt import debug
 # * Remove the possibility of creating an omnivoracious sentient black hole due
 #   to hash collisions.
 ################################################################################
+
+import anki, aqt, hashlib
+from aqt.qt import debug
 
 class Ada:
     class QACacheEntry:
@@ -79,8 +82,6 @@ class Ada:
             self.cid2qa[card_id] = qa
 
     def add_deck_to_caches(self, collection, deck_id):
-        print('add_deck_to_caches(did={})'.format(deck_id))
-        print('='*40)
         self.q2cid[deck_id] = {}
         card_ids = collection.db.list('SELECT id FROM cards WHERE did = {}'.format(deck_id))
         self.add_cards_to_caches(collection, card_ids, deck_id)
@@ -89,11 +90,10 @@ class Ada:
         """Combine duplicate answers whenever the card is to be displayed
         data is [cid, nid, mid, did, ord, tags, flds]"""
 
-        print('add_duplicate_answers(cid={}, did={}, recursive={}, html={})'.format(data[0], data[3], self.recursive, html.encode('utf8')))
-        print('='*40)
+        # print('add_duplicate_answers(cid={}, did={}, recursive={}, html={})'.format(data[0], data[3], self.recursive, html.encode('utf8')))
+        # print('='*40)
         
         # Recursion may happen because reasons. Stolidly ignore it.
-        # _log("add_dupe_answers: recursive={}".format(ada.recursive))
         if self.recursive:
             return html
 
@@ -141,18 +141,17 @@ class Ada:
         """Dynamic updates of our cache when the user adds/modifies/deletes cards"""
         self.add_cards_to_caches(s.col, [card.id for card in s.cards()])
 
-    # When the user adds a card, new cards are not readily available for modification during note.flush().
-    # TODO: perhaps updating only cards will suffice?
+    # When the user adds a card, new cards are not readily available for
+    # modification during note.flush().
     def add_card_to_caches(self, s):
         self.add_cards_to_caches(s.col, [s.id])
     
-    def remove_cards_from_cache(self, s, card_ids):
+    def remove_cards_from_cache(self, s, card_ids, **kwargs):
         """Remove cards from cache. Needed when the user moves them to another deck or deletes them."""
         query = 'SELECT id, did FROM cards WHERE id in {}'.format(anki.utils.ids2str(card_ids))
         for card_id, deck_id in s.mw.col.db.execute(query):
             self.q2cid[deck_id][self.cid2qa[card_id]['q']].remove(card_id)
             del self.cid2qa[card_id]
-            
 
     def remove_selected_cards_from_cache(self, s):
         """Remove selected cards from cache."""
