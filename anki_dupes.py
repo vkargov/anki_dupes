@@ -80,10 +80,11 @@ class Ada:
 
             deck_id = collection.db.scalar('SELECT did FROM cards WHERE id = {}'.format(card_id))
             qa = self.get_card_qa(collection, card_id)
-            # print('Adding qa={}'.format(qa))
-            assert(deck_id in self.q2cid)
-            assert('q' in qa)
-            self.q2cid[deck_id][qa['q']] = set([card_id])
+
+            ht = self.q2cid[deck_id]
+            if qa['q'] not in ht:
+                ht[qa['q']] = set()
+            ht[qa['q']].add(card_id)
 
             # We also keep the backwards CardID => {'q': Question, 'a': Answer}
             # relation needed when we need top dynamically update the main
@@ -111,7 +112,7 @@ class Ada:
 
         if card_type == 'q':
             self.question = html
-        if card_type == 'a':
+        elif card_type == 'a':
             # Answers, on the other hand, are not. We'll need to walk through all of them that
             # match the question and merge them into one html to be displayed on the screen.
 
@@ -122,22 +123,28 @@ class Ada:
             if deck_id not in self.q2cid:
                 self.add_deck_to_caches(collection, deck_id)
 
-            if self.question not in self.q2cid[deck_id]:
-                debug()
-            duplicate_card_ids = self.q2cid[deck_id][self.question]
+            # Make sure the card is "legitimate" and not an ad hoc card made e.g.
+            # by previewCards@clayout.py. Those have incorrect deck names.
+            # Handling them might be nice, but is also a gamble since it's
+            # nigh impossible to guess the correct deck for them.
+            # To investigate further, uncommend the else clause below.
+            if self.question in self.q2cid[deck_id]:
+                duplicate_card_ids = self.q2cid[deck_id][self.question]
 
-            # Show the "true" answer at the top.
-            united_html = html
+                # Show the "true" answer at the top.
+                united_html = html
 
-            # Internally render QA for each sub-answer and join them together
-            for duplicate_card_id in duplicate_card_ids:
-                duplicate_qa = self.cid2qa[duplicate_card_id]
+                # Internally render QA for each sub-answer and join them together
+                for duplicate_card_id in duplicate_card_ids:
+                    duplicate_qa = self.cid2qa[duplicate_card_id]
 
-                if html != duplicate_qa['a']:
-                    # Add the answer part of the HTML
-                    united_html += duplicate_qa['a'][len(duplicate_qa['q']):]
+                    if html != duplicate_qa['a']:
+                        # Add the answer part of the HTML
+                        united_html += duplicate_qa['a'][len(duplicate_qa['q']):]
 
-            html = united_html
+                html = united_html
+            # else:
+            #     debug()
 
         self.recursive = False
 
@@ -154,7 +161,7 @@ class Ada:
     
     def remove_cards_from_cache(self, s, card_ids, **args):
         """Remove cards from cache. Needed when the user moves them to another deck or deletes them."""
-        for card_id, deck_id in s.collection.db.execute('SELECT id, did FROM cards WHERE id in {}'.format(card_ids)):
+        for card_id, deck_id in s.db.execute('SELECT id, did FROM cards WHERE id in {}'.format(card_ids)):
             self.q2cid[deck_id][self.cid2qa[card_id]['q']].remove(card_id)
             del self.cid2qa[card_id]
             
