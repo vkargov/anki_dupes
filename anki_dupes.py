@@ -54,9 +54,11 @@ from aqt.qt import debug
 ################################################################################
 
 class Ada:
-    class Question:
-        """Currently processed question."""
-        pass
+    class QACacheEntry:
+        """;)"""
+        def __init__(self, cid, answer):
+            self.cid = cid
+            self.answere = answer
 
     def __init__(self):
         self.q2cid = {}                # Question => set(CardIDs)
@@ -120,8 +122,9 @@ class Ada:
             if deck_id not in self.q2cid:
                 self.add_deck_to_caches(collection, deck_id)
 
-            card_id = self.q2cid[deck_id][self.question]
-            duplicate_card_ids = self.cid2qa[deck_id][card_id]
+            if self.question not in self.q2cid[deck_id]:
+                debug()
+            duplicate_card_ids = self.q2cid[deck_id][self.question]
 
             # Show the "true" answer at the top.
             united_html = html
@@ -151,7 +154,7 @@ class Ada:
     
     def remove_cards_from_cache(self, s, card_ids, **args):
         """Remove cards from cache. Needed when the user moves them to another deck or deletes them."""
-        for card_id, deck_id in collection.db.execute('SELECT id, did FROM cards WHERE id in {}'.format(card_ids)):
+        for card_id, deck_id in s.collection.db.execute('SELECT id, did FROM cards WHERE id in {}'.format(card_ids)):
             self.q2cid[deck_id][self.cid2qa[card_id]['q']].remove(card_id)
             del self.cid2qa[card_id]
             
