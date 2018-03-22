@@ -40,7 +40,7 @@
 #   to hash collisions.
 ################################################################################
 
-import anki, aqt, hashlib
+import anki, aqt, hashlib, inspect
 from aqt.qt import debug
 
 class Ada:
@@ -139,26 +139,31 @@ class Ada:
 
     def add_note_to_caches(self, s):
         """Dynamic updates of our cache when the user adds/modifies/deletes cards"""
+        print inspect.stack()[0][3]
         self.add_cards_to_caches(s.col, [card.id for card in s.cards()])
 
     # When the user adds a card, new cards are not readily available for
     # modification during note.flush().
     def add_card_to_caches(self, s):
+        print inspect.stack()[0][3]
         self.add_cards_to_caches(s.col, [s.id])
     
     def remove_cards_from_cache(self, s, card_ids, **kwargs):
         """Remove cards from cache. Needed when the user moves them to another deck or deletes them."""
+        print inspect.stack()[0][3]
         query = 'SELECT id, did FROM cards WHERE id in {}'.format(anki.utils.ids2str(card_ids))
-        for card_id, deck_id in s.mw.col.db.execute(query):
+        for card_id, deck_id in s.db.execute(query):
             self.q2cid[deck_id][self.cid2qa[card_id]['q']].remove(card_id)
             del self.cid2qa[card_id]
 
     def remove_selected_cards_from_cache(self, s):
         """Remove selected cards from cache."""
+        print inspect.stack()[0][3]
         self.remove_cards_from_cache(s, s.selectedCards())
 
     def update_after_deck_change(self, s):
         """Update the plugin's hashes after the deck change."""
+        print inspect.stack()[0][3]
         self.add_cards_to_caches(s.mw.col, s.selectedCards())
 
 ada = Ada()
