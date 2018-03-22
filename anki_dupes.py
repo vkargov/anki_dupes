@@ -1,33 +1,10 @@
 # -*- coding: utf-8 -*-
 
-# Show duplicates v0.5 aka Ada(update dupe answers)
+# Show duplicates v0.6 aka Ada(update dupe answers)
 # Shows card duplicates for a card below it.
-
-# TODO
-# Update timings on the duplicates.
-# Remove the duct tape.
-# Replace the chewing gum and putty with glue.
-# Remove the possibility of creating an omnivoracious sentient black hole due to hash collision.
 
 import anki, aqt, hashlib
 from aqt.qt import debug
-
-# _debug = True
-
-# if _debug:
-#     from aqt.qt import debug
-#     from PyQt4.QtCore import pyqtRemoveInputHook
-#     import sys
-#     pyqtRemoveInputHook()
-#     _log_file = open('ada.log', 'w')
-#     def _log(s):
-#         _log_file.write(s.encode("utf8") + '\n')
-#         _log_file.flush()
-#     _log("Python version:\n{}".format(sys.version))
-# else:
-#     def _log(s):
-#         pass
-
 
 ################################################################################
 # TERMINOLOGY
@@ -51,6 +28,16 @@ from aqt.qt import debug
 # If navigation in pdb does not work, then chances are that readline is broken,
 # to fix it do "import readline" and resolve it somehow
 # e.g. by using LD_PRELOAD or installing the right package if available
+################################################################################
+# TODO
+################################################################################
+# * Update timings on the duplicates.
+# * Maybe re-enable support for the preview mode.
+# * Make sure the plugin works with the cram mode & tags, I never use them.
+# * Remove the duct tape.
+# * Replace the chewing gum and putty with glue.
+# * Remove the possibility of creating an omnivoracious sentient black hole due
+#   to hash collisions.
 ################################################################################
 
 class Ada:
@@ -124,10 +111,10 @@ class Ada:
                 self.add_deck_to_caches(collection, deck_id)
 
             # Make sure the card is "legitimate" and not an ad hoc card made e.g.
-            # by previewCards@clayout.py. Those have incorrect deck names.
-            # Handling them might be nice, but is also a gamble since it's
-            # nigh impossible to guess the correct deck for them.
-            # To investigate further, uncommend the else clause below.
+            # by previewCards@clayout.py. Those have incorrect deck IDs.
+            # Seeing duplicates in previews might be nice (and the plugin used to do that),
+            # but is also a gamble since it's nigh impossible to guess the correct deck for them.
+            # To investigate further, install the anki source code and uncomment the else clause below.
             if self.question in self.q2cid[deck_id]:
                 duplicate_card_ids = self.q2cid[deck_id][self.question]
 
@@ -157,22 +144,23 @@ class Ada:
     # When the user adds a card, new cards are not readily available for modification during note.flush().
     # TODO: perhaps updating only cards will suffice?
     def add_card_to_caches(self, s):
-        self.add_cards_to_caches(s.col, s.id)
+        self.add_cards_to_caches(s.col, [s.id])
     
-    def remove_cards_from_cache(self, s, card_ids, **args):
+    def remove_cards_from_cache(self, s, card_ids):
         """Remove cards from cache. Needed when the user moves them to another deck or deletes them."""
-        for card_id, deck_id in s.db.execute('SELECT id, did FROM cards WHERE id in {}'.format(card_ids)):
+        query = 'SELECT id, did FROM cards WHERE id in {}'.format(anki.utils.ids2str(card_ids))
+        for card_id, deck_id in s.mw.col.db.execute(query):
             self.q2cid[deck_id][self.cid2qa[card_id]['q']].remove(card_id)
             del self.cid2qa[card_id]
             
 
     def remove_selected_cards_from_cache(self, s):
         """Remove selected cards from cache."""
-        self.remove_cards_from_cache(s.selectedCards())
+        self.remove_cards_from_cache(s, s.selectedCards())
 
     def update_after_deck_change(self, s):
         """Update the plugin's hashes after the deck change."""
-        self.update_caches(s.mw.col, s.selectedCards())
+        self.add_cards_to_caches(s.mw.col, s.selectedCards())
 
 ada = Ada()
         
