@@ -50,25 +50,47 @@ class Ada:
             self.cid = cid
             self.answere = answer
 
-    def __init__(self):
+    def __init__(self, anki, aqt):
+        # Initialize caches & state variables
         self.q2cid = {}                # Question => set(CardIDs)
         self.cid2qa = {}               # Card ID => {'q': Question, 'a': Answer}
         self.recursive = False         # Used to prevent recursive calls.
         self.question = None           # Currently processed question.
 
+        # Install all hooks
+        anki.hooks.addHook('mungeQA', self.add_duplicate_answers);
+        anki.notes.Note.flush = anki.hooks.wrap(anki.notes.Note.flush, self.update_caches_for_card, 'after')
+        anki.cards.Card.flush = anki.hooks.wrap(anki.cards.Card.flush, self.update_caches_for_note, 'after')
+        anki.collection._Collection.remCards = anki.hooks.wrap(anki.collection._Collection.remCards, self.remove_cards_from_cache, 'before')
+        aqt.browser.Browser.setDeck = anki.hooks.wrap(aqt.browser.Browser.setDeck, self.remove_selected_cards_from_cache, 'before')
+        aqt.browser.Browser.setDeck = anki.hooks.wrap(aqt.browser.Browser.setDeck, self.update_after_deck_change, 'after')
+
+
     @staticmethod
     def get_card_qa(collection, card_id):
+        if not collection.renderQA([card_id]):
+            debug()
         return collection.renderQA([card_id])[0]
 
-    def add_cards_to_caches(self, collection, card_ids, did=None):
+    def add_cards_to_caches(self, collection, card_ids, did=None, update=False, check_adhoc=False):
+        """Add chosen cards for caches.
+        did: specifices the deck if it's known beforehand, which should save us from running redundant DB queries
+        update: Remove old caches if set to True. Should be set if the cards had been added before.
+        """
+        if update:
+            self.remove_cards_from_cache(collection, card_ids)
+        
         for card_id in card_ids:
+            # Skip ad hoc cards.
+            #if check_adhoc and collection.db.scalar('SELECT did FROM cards WHERE id = {}'.format(card_id))
+            
             if did:
                 # Don't query deck for each card if we know it's the same for all of them.
                 deck_id = did
             else:
                 deck_id = 'SELECT did FROM cards WHERE id = {}'.format(card_id)
 
-            deck_id = collection.db.scalar('SELECT did FROM cards WHERE id = {}'.format(card_id))
+            print('Card id = {}'.format(card_id))
             qa = self.get_card_qa(collection, card_id)
 
             ht = self.q2cid[deck_id]
@@ -137,16 +159,16 @@ class Ada:
 
         return html
 
-    def add_note_to_caches(self, s):
+    def update_caches_for_note(self, s):
         """Dynamic updates of our cache when the user adds/modifies/deletes cards"""
         print inspect.stack()[0][3]
-        self.add_cards_to_caches(s.col, [card.id for card in s.cards()])
+        self.add_cards_to_caches(s.col, [card.id for card in s.cards()], update=True)
 
     # When the user adds a card, new cards are not readily available for
     # modification during note.flush().
-    def add_card_to_caches(self, s):
+    def update_caches_for_card(self, s):
         print inspect.stack()[0][3]
-        self.add_cards_to_caches(s.col, [s.id])
+        self.add_cards_to_caches(s.col, [s.id], update=True)
     
     def remove_cards_from_cache(self, s, card_ids, **kwargs):
         """Remove cards from cache. Needed when the user moves them to another deck or deletes them."""
@@ -166,11 +188,4 @@ class Ada:
         print inspect.stack()[0][3]
         self.add_cards_to_caches(s.mw.col, s.selectedCards())
 
-ada = Ada()
-        
-anki.hooks.addHook('mungeQA', ada.add_duplicate_answers);
-anki.notes.Note.flush = anki.hooks.wrap(anki.notes.Note.flush, ada.add_note_to_caches, 'after')
-anki.cards.Card.flush = anki.hooks.wrap(anki.cards.Card.flush, ada.add_card_to_caches, 'after')
-anki.collection._Collection.remCards = anki.hooks.wrap(anki.collection._Collection.remCards, ada.remove_cards_from_cache, 'before')
-aqt.browser.Browser.setDeck = anki.hooks.wrap(aqt.browser.Browser.setDeck, ada.remove_selected_cards_from_cache, 'before')
-aqt.browser.Browser.setDeck = anki.hooks.wrap(aqt.browser.Browser.setDeck, ada.update_after_deck_change, 'after')
+ada = Ada(anki, aqt)
