@@ -66,11 +66,8 @@ class Ada:
         aqt.browser.Browser.setDeck = anki.hooks.wrap(aqt.browser.Browser.setDeck, self.remove_selected_cards_from_cache, 'before')
         aqt.browser.Browser.setDeck = anki.hooks.wrap(aqt.browser.Browser.setDeck, self.update_after_deck_change, 'after')
 
-
     @staticmethod
     def get_card_qa(collection, card_id):
-        # if not collection.renderQA([card_id]):
-        #     debug()
         return collection.renderQA([card_id])[0]
 
     def add_cards_to_caches(self, collection, card_ids, did=None, update=False):
@@ -80,6 +77,11 @@ class Ada:
         update: Remove old caches if set to True. Should be set if the cards had been added before.
                 Justification: Performance. It's not an error to remove uncached cards, but it takes more time.
         """
+
+        # Or else we'll remember composite answers which is NOT what we want to do.
+        was_recursive = self.recursive
+        self.recursive = True
+        
         if update:
             self.remove_cards_from_cache(collection, card_ids)
         
@@ -102,6 +104,8 @@ class Ada:
             # relation needed when we need top dynamically update the main
             # dictionary if the user adds/edits/deletes cards.
             self.cid2qa[card_id] = qa
+
+        self.recursive = was_recursive
 
     def add_deck_to_caches(self, collection, deck_id):
         self.q2cid[deck_id] = {}
