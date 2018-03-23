@@ -21,8 +21,9 @@
 ################################################################################
 # DEBUGGING
 ################################################################################
-# Call debug() from wherever you need and then
-# just run anki from the console
+# * Call debug() from wherever you need and then just run anki from the console
+# * To inspect state without breaking, use the debug window (Ctrl + Shift + ;)
+#   Then use "sys.modules['anki_dupes'].ada" to get access the plugin object.
 #
 # If navigation in pdb does not work, then chances are that readline is not
 # linked properly. To fix it, try "import readline", take note of the error
