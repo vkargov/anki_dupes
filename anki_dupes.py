@@ -59,8 +59,8 @@ class Ada:
 
         # Install all hooks
         anki.hooks.addHook('mungeQA', self.add_duplicate_answers);
-        anki.notes.Note.flush = anki.hooks.wrap(anki.notes.Note.flush, self.update_caches_for_card, 'after')
-        anki.cards.Card.flush = anki.hooks.wrap(anki.cards.Card.flush, self.update_caches_for_note, 'after')
+        anki.notes.Note.flush = anki.hooks.wrap(anki.notes.Note.flush, self.update_caches_for_note, 'after')
+        anki.cards.Card.flush = anki.hooks.wrap(anki.cards.Card.flush, self.update_caches_for_card, 'after')
         anki.collection._Collection.remCards = anki.hooks.wrap(anki.collection._Collection.remCards, self.remove_cards_from_cache, 'before')
         aqt.browser.Browser.setDeck = anki.hooks.wrap(aqt.browser.Browser.setDeck, self.remove_selected_cards_from_cache, 'before')
         aqt.browser.Browser.setDeck = anki.hooks.wrap(aqt.browser.Browser.setDeck, self.update_after_deck_change, 'after')
@@ -68,27 +68,26 @@ class Ada:
 
     @staticmethod
     def get_card_qa(collection, card_id):
-        if not collection.renderQA([card_id]):
-            debug()
+        # if not collection.renderQA([card_id]):
+        #     debug()
         return collection.renderQA([card_id])[0]
 
-    def add_cards_to_caches(self, collection, card_ids, did=None, update=False, check_adhoc=False):
+    def add_cards_to_caches(self, collection, card_ids, did=None, update=False):
         """Add chosen cards for caches.
-        did: specifices the deck if it's known beforehand, which should save us from running redundant DB queries
+        did: Specifices the deck if it's known beforehand.
+                Justification: Performance. It should save us from running redundant DB queries.
         update: Remove old caches if set to True. Should be set if the cards had been added before.
+                Justification: Performance. It's not an error to remove uncached cards, but it takes more time.
         """
         if update:
             self.remove_cards_from_cache(collection, card_ids)
         
-        for card_id in card_ids:
-            # Skip ad hoc cards.
-            #if check_adhoc and collection.db.scalar('SELECT did FROM cards WHERE id = {}'.format(card_id))
-            
+        for card_id in card_ids:            
             if did:
                 # Don't query deck for each card if we know it's the same for all of them.
                 deck_id = did
             else:
-                deck_id = 'SELECT did FROM cards WHERE id = {}'.format(card_id)
+                deck_id = collection.db.scalar('SELECT did FROM cards WHERE id = {}'.format(card_id))
 
             print('Card id = {}'.format(card_id))
             qa = self.get_card_qa(collection, card_id)
@@ -175,8 +174,12 @@ class Ada:
         print inspect.stack()[0][3]
         query = 'SELECT id, did FROM cards WHERE id in {}'.format(anki.utils.ids2str(card_ids))
         for card_id, deck_id in s.db.execute(query):
-            self.q2cid[deck_id][self.cid2qa[card_id]['q']].remove(card_id)
-            del self.cid2qa[card_id]
+            try:
+                self.q2cid[deck_id][self.cid2qa[card_id]['q']].remove(card_id)
+                del self.cid2qa[card_id]
+            except KeyError:
+                # Trying to remove a card that has not been added yet is NOT an error.
+                pass
 
     def remove_selected_cards_from_cache(self, s):
         """Remove selected cards from cache."""
