@@ -92,6 +92,9 @@ class Ada:
             else:
                 deck_id = collection.db.scalar('SELECT did FROM cards WHERE id = {}'.format(card_id))
 
+            if deck_id not in self.q2cid:
+                self.q2cid[deck_id] = {}
+
             print('Card id = {}'.format(card_id))
             qa = self.get_card_qa(collection, card_id)
 
@@ -108,7 +111,6 @@ class Ada:
         self.recursive = was_recursive
 
     def add_deck_to_caches(self, collection, deck_id):
-        self.q2cid[deck_id] = {}
         card_ids = collection.db.list('SELECT id FROM cards WHERE did = {}'.format(deck_id))
         self.add_cards_to_caches(collection, card_ids, deck_id)
 
@@ -141,7 +143,7 @@ class Ada:
             # Seeing duplicates in previews might be nice (and the plugin used to do that),
             # but is also a gamble since it's nigh impossible to guess the correct deck for them.
             # To investigate further, install the anki source code and uncomment the else clause below.
-            if self.question in self.q2cid[deck_id]:
+            if (deck_id in self.q2cid) and (self.question in self.q2cid[deck_id]):
                 duplicate_card_ids = self.q2cid[deck_id][self.question]
 
                 # Show the "true" answer at the top.
