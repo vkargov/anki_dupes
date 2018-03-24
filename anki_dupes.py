@@ -33,6 +33,9 @@
 # TODO
 ################################################################################
 # * Update timings on the duplicates.
+# * "<span>猫</span>" != "猫", i.e. the cards need to be literally equivalent.
+#   I could do stripHTML, but it also strips images, and I want to preserve
+#   those. So I guess I should add a way to strip all HTML except for images?
 # * Maybe re-enable support for the preview mode.
 # * Make sure the plugin works with the cram mode & tags, I never use them.
 # * Remove the duct tape.
