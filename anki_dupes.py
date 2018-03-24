@@ -194,7 +194,7 @@ class Ada:
     def remove_selected_cards_from_cache(self, s):
         """Remove selected cards from cache."""
         print inspect.stack()[0][3]
-        self.remove_cards_from_cache(s, s.selectedCards())
+        self.remove_cards_from_cache(s.mw.col, s.selectedCards())
 
     def update_after_deck_change(self, s):
         """Update the plugin's hashes after the deck change."""
