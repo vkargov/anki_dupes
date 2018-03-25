@@ -33,9 +33,6 @@
 # TODO
 ################################################################################
 # * Update timings on the duplicates.
-# * "<span>猫</span>" != "猫", i.e. the cards need to be literally equivalent.
-#   I could do stripHTML, but it also strips images, and I want to preserve
-#   those. So I guess I should add a way to strip all HTML except for images?
 # * Maybe re-enable support for the preview mode.
 # * Make sure the plugin works with the cram mode & tags, I never use them.
 # * Remove the duct tape.
@@ -46,6 +43,7 @@
 
 import anki, aqt, hashlib, inspect
 from aqt.qt import debug
+from anki.utils import stripHTMLMedia
 
 class Ada:
     class QACacheEntry:
@@ -102,9 +100,10 @@ class Ada:
             qa = self.get_card_qa(collection, card_id)
 
             ht = self.q2cid[deck_id]
-            if qa['q'] not in ht:
-                ht[qa['q']] = set()
-            ht[qa['q']].add(card_id)
+            q = stripHTMLMedia(qa['q'])
+            if q not in ht:
+                ht[q] = set()
+            ht[q].add(card_id)
 
             # We also keep the backwards CardID => {'q': Question, 'a': Answer}
             # relation needed when we need top dynamically update the main
@@ -141,13 +140,14 @@ class Ada:
             if deck_id not in self.q2cid:
                 self.add_deck_to_caches(collection, deck_id)
 
+            q = stripHTMLMedia(self.question)
             # Make sure the card is "legitimate" and not an ad hoc card made e.g.
             # by previewCards@clayout.py. Those have incorrect deck IDs.
             # Seeing duplicates in previews might be nice (and the plugin used to do that),
             # but is also a gamble since it's nigh impossible to guess the correct deck for them.
             # To investigate further, install the anki source code and uncomment the else clause below.
-            if (deck_id in self.q2cid) and (self.question in self.q2cid[deck_id]):
-                duplicate_card_ids = self.q2cid[deck_id][self.question]
+            if (deck_id in self.q2cid) and (q in self.q2cid[deck_id]):
+                duplicate_card_ids = self.q2cid[deck_id][q]
 
                 # Show the "true" answer at the top.
                 united_html = html
@@ -185,7 +185,8 @@ class Ada:
         query = 'SELECT id, did FROM cards WHERE id in {}'.format(anki.utils.ids2str(card_ids))
         for card_id, deck_id in s.db.execute(query):
             try:
-                self.q2cid[deck_id][self.cid2qa[card_id]['q']].remove(card_id)
+                q = stripHTMLMedia(self.cid2qa[card_id]['q'])
+                self.q2cid[deck_id][q].remove(card_id)
                 del self.cid2qa[card_id]
             except KeyError:
                 # Trying to remove a card that has not been added yet is NOT an error.
