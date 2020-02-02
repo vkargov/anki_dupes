@@ -168,7 +168,7 @@ class Ada:
 
         return html
 
-    def update_caches_for_note(self, s):
+    def update_caches_for_note(self, s, mod, *args, **kwargs):
         """Dynamic updates of our cache when the user adds/modifies/deletes cards"""
         # print inspect.stack()[0][3]
         self.add_cards_to_caches(s.col, [card.id for card in s.cards()], update=True)
@@ -179,7 +179,7 @@ class Ada:
         # print inspect.stack()[0][3]
         self.add_cards_to_caches(s.col, [s.id], update=True)
     
-    def remove_cards_from_cache(self, s, card_ids, **kwargs):
+    def remove_cards_from_cache(self, s, card_ids, *args, **kwargs):
         """Remove cards from cache. Needed when the user moves them to another deck or deletes them."""
         # print inspect.stack()[0][3]
         query = 'SELECT id, did FROM cards WHERE id in {}'.format(anki.utils.ids2str(card_ids))
