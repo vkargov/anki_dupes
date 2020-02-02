@@ -46,12 +46,6 @@ from aqt.qt import debug
 from anki.utils import stripHTMLMedia
 
 class Ada:
-    class QACacheEntry:
-        """;)"""
-        def __init__(self, cid, answer):
-            self.cid = cid
-            self.answere = answer
-
     def __init__(self, anki, aqt):
         # Initialize caches & state variables
         self.q2cid = {}                # Question => set(CardIDs)
@@ -60,13 +54,12 @@ class Ada:
         self.question = None           # Currently processed question.
 
         # Install all hooks
-        anki.hooks.addHook('mungeQA', self.add_duplicate_answers);
+        anki.hooks.addHook('mungeQA', self.add_duplicate_answers)
         anki.notes.Note.flush = anki.hooks.wrap(anki.notes.Note.flush, self.update_caches_for_note, 'after')
         anki.cards.Card.flush = anki.hooks.wrap(anki.cards.Card.flush, self.update_caches_for_card, 'after')
         anki.collection._Collection.remCards = anki.hooks.wrap(anki.collection._Collection.remCards, self.remove_cards_from_cache, 'before')
         aqt.browser.Browser.setDeck = anki.hooks.wrap(aqt.browser.Browser.setDeck, self.remove_selected_cards_from_cache, 'before')
         aqt.browser.Browser.setDeck = anki.hooks.wrap(aqt.browser.Browser.setDeck, self.update_after_deck_change, 'after')
-
     @staticmethod
     def get_card_qa(collection, card_id):
         return collection.renderQA([card_id])[0]
@@ -97,7 +90,13 @@ class Ada:
                 self.q2cid[deck_id] = {}
 
             # print('Card id = {}'.format(card_id))
-            qa = self.get_card_qa(collection, card_id)
+
+            card = anki.cards.Card(collection, card_id)
+            # I think renderQA is being moved to render_card so the next line
+            # will be relevant:
+            # qa = anki.template.render_card(collection, card, note, False)
+            # ... and this one won't:
+            qa = card._getQA()
 
             ht = self.q2cid[deck_id]
             q = stripHTMLMedia(qa['q'])
@@ -122,7 +121,7 @@ class Ada:
 
         # print('add_duplicate_answers(cid={}, did={}, recursive={}, html={})'.format(data[0], data[3], self.recursive, html.encode('utf8')))
         # print('='*40)
-        
+
         # Recursion may happen because reasons. Stolidly ignore it.
         if self.recursive:
             return html
