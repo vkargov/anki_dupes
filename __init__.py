@@ -3,7 +3,7 @@
 ################################################################################
 # DESCRIPTION
 ################################################################################
-# Show duplicates v0.6 aka Ada(update dupe answers).
+# Show duplicates v0.7 aka Ada(update dupe answers).
 # Shows card duplicates for a card below it.
 ################################################################################
 # TERMINOLOGY
@@ -44,6 +44,7 @@
 import anki, aqt, hashlib, inspect
 from aqt.qt import debug
 from anki.utils import stripHTMLMedia
+from aqt import gui_hooks
 
 class Ada:
     def __init__(self, anki, aqt):
@@ -54,7 +55,8 @@ class Ada:
         self.question = None           # Currently processed question.
 
         # Install all hooks
-        anki.hooks.addHook('mungeQA', self.add_duplicate_answers)
+        gui_hooks.card_will_show.append(self.add_duplicate_answers)
+        anki.notes.Note.flush = anki.hooks.wrap(anki.notes.Note.flush, self.update_caches_for_note, 'after')
         anki.notes.Note.flush = anki.hooks.wrap(anki.notes.Note.flush, self.update_caches_for_note, 'after')
         anki.cards.Card.flush = anki.hooks.wrap(anki.cards.Card.flush, self.update_caches_for_card, 'after')
         anki.collection._Collection.remCards = anki.hooks.wrap(anki.collection._Collection.remCards, self.remove_cards_from_cache, 'before')
@@ -96,10 +98,10 @@ class Ada:
             # will be relevant:
             # qa = anki.template.render_card(collection, card, note, False)
             # ... and this one won't:
-            qa = card._getQA()
+            qa = card.render_output()
 
             ht = self.q2cid[deck_id]
-            q = stripHTMLMedia(qa['q'])
+            q = stripHTMLMedia(qa.question_text)
             if q not in ht:
                 ht[q] = set()
             ht[q].add(card_id)
@@ -115,7 +117,7 @@ class Ada:
         card_ids = collection.db.list('SELECT id FROM cards WHERE did = {}'.format(deck_id))
         self.add_cards_to_caches(collection, card_ids, deck_id)
 
-    def add_duplicate_answers(self, html, card_type, fields, model, data, collection):
+    def add_duplicate_answers(self, html, card, action):
         """Combine duplicate answers whenever the card is to be displayed
         data is [cid, nid, mid, did, ord, tags, flds]"""
 
@@ -126,18 +128,18 @@ class Ada:
         if self.recursive:
             return html
 
-        if card_type == 'q':
+        if action == 'reviewQuestion':
             self.question = html
-        elif card_type == 'a':
+        elif action == 'reviewAnswer':
             # Answers, on the other hand, are not. We'll need to walk through all of them that
             # match the question and merge them into one html to be displayed on the screen.
 
             self.recursive = True
 
-            deck_id = data[3]
+            deck_id = card.did
 
             if deck_id not in self.q2cid:
-                self.add_deck_to_caches(collection, deck_id)
+                self.add_deck_to_caches(card.col, deck_id)
 
             q = stripHTMLMedia(self.question)
             # Make sure the card is "legitimate" and not an ad hoc card made e.g.
@@ -155,19 +157,26 @@ class Ada:
                 for duplicate_card_id in duplicate_card_ids:
                     duplicate_qa = self.cid2qa[duplicate_card_id]
 
-                    if html != duplicate_qa['a']:
+                    # using "html" won't work as it includes styling info
+                    if card.render_output().answer_text != duplicate_qa.answer_text:
                         # Add the answer part of the HTML
-                        united_html += duplicate_qa['a'][len(duplicate_qa['q']):]
+                        print("Different html, adding card")
+                        print("====================")
+                        print(html)
+                        print("====================")
+                        print(duplicate_qa.answer_text)
+                        print("====================")
+                        united_html += duplicate_qa.answer_text[len(duplicate_qa.question_text):]
 
                 html = united_html
-            # else:
-            #     debug()
+            else:
+                assert False
 
         self.recursive = False
 
         return html
 
-    def update_caches_for_note(self, s, mod, *args, **kwargs):
+    def update_caches_for_note(self, s, *args, **kwargs):
         """Dynamic updates of our cache when the user adds/modifies/deletes cards"""
         # print inspect.stack()[0][3]
         self.add_cards_to_caches(s.col, [card.id for card in s.cards()], update=True)
@@ -184,7 +193,7 @@ class Ada:
         query = 'SELECT id, did FROM cards WHERE id in {}'.format(anki.utils.ids2str(card_ids))
         for card_id, deck_id in s.db.execute(query):
             try:
-                q = stripHTMLMedia(self.cid2qa[card_id]['q'])
+                q = stripHTMLMedia(self.cid2qa[card_id].question_text)
                 self.q2cid[deck_id][q].remove(card_id)
                 del self.cid2qa[card_id]
             except KeyError:
