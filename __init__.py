@@ -169,8 +169,8 @@ class Ada:
                         united_html += duplicate_qa.answer_text[len(duplicate_qa.question_text):]
 
                 html = united_html
-            else:
-                assert False
+        else:
+            assert False, action
 
         self.recursive = False
 
