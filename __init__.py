@@ -128,9 +128,9 @@ class Ada:
         if self.recursive:
             return html
 
-        if action == 'reviewQuestion':
+        if action == 'reviewQuestion' or action == 'previewQuestion':
             self.question = html
-        elif action == 'reviewAnswer':
+        elif action == 'reviewAnswer' or action == 'previewAnswer':
             # Answers, on the other hand, are not. We'll need to walk through all of them that
             # match the question and merge them into one html to be displayed on the screen.
 
@@ -160,12 +160,12 @@ class Ada:
                     # using "html" won't work as it includes styling info
                     if card.render_output().answer_text != duplicate_qa.answer_text:
                         # Add the answer part of the HTML
-                        print("Different html, adding card")
-                        print("====================")
-                        print(html)
-                        print("====================")
-                        print(duplicate_qa.answer_text)
-                        print("====================")
+                        # print("Different html, adding card")
+                        # print("====================")
+                        # print(html)
+                        # print("====================")
+                        # print(duplicate_qa.answer_text)
+                        # print("====================")
                         united_html += duplicate_qa.answer_text[len(duplicate_qa.question_text):]
 
                 html = united_html
