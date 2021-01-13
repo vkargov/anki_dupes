@@ -128,9 +128,9 @@ class Ada:
         if self.recursive:
             return html
 
-        if action == 'reviewQuestion' or action == 'previewQuestion':
+        if action == 'reviewQuestion' or action == 'previewQuestion' or action == 'clayoutQuestion':
             self.question = html
-        elif action == 'reviewAnswer' or action == 'previewAnswer':
+        elif action == 'reviewAnswer' or action == 'previewAnswer' or action == 'clayoutAnswer':
             # Answers, on the other hand, are not. We'll need to walk through all of them that
             # match the question and merge them into one html to be displayed on the screen.
 
