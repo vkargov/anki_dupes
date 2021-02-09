@@ -23,12 +23,38 @@
 ################################################################################
 # * Call debug() from wherever you need and then just run anki from the console
 # * To inspect state without breaking, use the debug window (Ctrl + Shift + ;)
-#   Then use "sys.modules['anki_dupes'].ada" to get access the plugin object.
+#   Then use "sys.modules['865767531'].ada" to get access the plugin object.
 #
 # If navigation in pdb does not work, then chances are that readline is not
 # linked properly. To fix it, try "import readline", take note of the error
 # message, and start workig from there somehow, e.g. by using LD_PRELOAD or
 # installing the right package if available.
+#
+# Common objects/commands for debugging:
+# Main plugin object
+## sys.modules['865767531'].ada
+# Current card
+## aqt.mw.reviewer.card
+# Current card question
+## print(aqt.mw.reviewer.card.render_output().question_text)
+# Current card answer
+## print(aqt.mw.reviewer.card.render_output().answer_text)
+# Show all diplicates for the active card:
+## sys.modules['865767531'].ada.q2cid[aqt.mw.reviewer.card.did][aqt.mw.reviewer.card.render_output().question_text]
+# Delete the current deck's hash (causing it to rebuild):
+## del sys.modules['865767531'].ada.q2cid[aqt.mw.reviewer.card.did]
+
+################################################################################
+# Known issue
+################################################################################
+# Sometimes the card build thing doesn't trigger when entering a new deck.
+# Might be related to adding a new card to that deck before entering it.
+# Try: Add a new card, or move a card to the deck
+# See if sys.modules['865767531'].ada.q2cid[did] is created for that deck.
+# If it's created, that means it's not gonna be rebuilt when we start it
+# And it's gonna be a problem.
+# Possible fix: maybe keep a state bit that tracks whether or not cards have been
+# built for the deck, and don't rely on there not being cards in that deck?
 ################################################################################
 # TODO
 ################################################################################
