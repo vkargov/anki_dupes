@@ -92,7 +92,7 @@ class Ada:
     def get_card_qa(collection, card_id):
         return collection.renderQA([card_id])[0]
 
-    def add_cards_to_caches(self, collection, card_ids, did=None, update=False):
+    def add_cards_to_caches(self, collection, card_ids, did=None, update=False, skip_empty=True):
         """Add chosen cards for caches.
         did: Specifices the deck if it's known beforehand.
                 Justification: Performance. It should save us from running redundant DB queries.
@@ -115,6 +115,14 @@ class Ada:
                 deck_id = collection.db.scalar('SELECT did FROM cards WHERE id = {}'.format(card_id))
 
             if deck_id not in self.q2cid:
+                if skip_empty:
+                    # We've added or modified a card in a deck that hasn't been opened for reviewing yet.
+                    # Don't initialize it until we actually open it for reviewing.
+                    # Otherwise we'll index one card but the rest of the cards will be uninitialized
+                    # and the plugin will think "okay, there's a dictionary for this deck, no need to create more"
+                    # It may be worth refactoring the code and keep an indexed/unindexed bit for each deck
+                    continue
+
                 self.q2cid[deck_id] = {}
 
             # print('Card id = {}'.format(card_id))
@@ -141,7 +149,7 @@ class Ada:
 
     def add_deck_to_caches(self, collection, deck_id):
         card_ids = collection.db.list('SELECT id FROM cards WHERE did = {}'.format(deck_id))
-        self.add_cards_to_caches(collection, card_ids, deck_id)
+        self.add_cards_to_caches(collection, card_ids, deck_id, skip_empty=False)
 
     def add_duplicate_answers(self, html, card, action):
         """Combine duplicate answers whenever the card is to be displayed
